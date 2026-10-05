@@ -30,6 +30,11 @@ requires-python = ">=3.8"
 #"Documentation" = "https://qp.readthedocs.io/"
 
 [project.optional-dependencies]
+reaction = [
+  "numpy>=1.20",
+  "biopython>=1.79",
+  "rdkit>=2022.9"
+]
 test = [
   "pytest>=6.1.2",
   "pytest-cov",

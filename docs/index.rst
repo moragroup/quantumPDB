@@ -39,6 +39,7 @@ faithfully capture the chemical environment, even for non-spherical active sites
    configuration
    cli
    output
+   reaction_search
 
 .. toctree::
    :maxdepth: 2
