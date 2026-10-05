@@ -261,7 +261,27 @@ def get_charge(structure_dir=None):
     return charge, spin
 
 
-def create_jobs(pdb_list_path, output_dir, optimization, basis, method, guess, use_charge_embedding, charge_embedding_cutoff, charge_embedding_charges, gpus, memory, scheduler, pcm_radii_file, dielectric, use_implicit_solvent=True):
+def write_orca_pointcharges(xyz_path="ptchrges.xyz", pc_path="ptchrges.pc"):
+    """Convert a TeraChem point charge file to ORCA's ``.pc`` format.
+
+    TeraChem files have a count line, a comment line, then ``q x y z``
+    lines. ORCA expects the count line followed directly by ``q x y z``.
+
+    Parameters
+    ----------
+    xyz_path : str, optional
+        TeraChem point charge file. Default is ``'ptchrges.xyz'``.
+    pc_path : str, optional
+        Output ORCA point charge file. Default is ``'ptchrges.pc'``.
+    """
+    with open(xyz_path, 'r') as f:
+        lines = f.readlines()
+    with open(pc_path, 'w') as f:
+        f.write(lines[0])
+        f.writelines(lines[2:])
+
+
+def create_jobs(pdb_list_path, output_dir, optimization, basis, method, guess, use_charge_embedding, charge_embedding_cutoff, charge_embedding_charges, gpus, memory, scheduler, pcm_radii_file, dielectric, use_implicit_solvent=True, qm_program="terachem", nprocs=16, partition=None, account=None, time_limit=None, orca_module="orca/6.1.1", dispersion="D3BJ", aux_basis="def2/J", orca_keywords=None):
     """Generate QM job input files for all extracted clusters.
 
     Creates TeraChem input files (``qmscript.in``) and scheduler submission
@@ -303,7 +323,32 @@ def create_jobs(pdb_list_path, output_dir, optimization, basis, method, guess, u
     use_implicit_solvent : bool, optional
         If True, include PCM implicit solvent in TeraChem input. Can be
         enabled alongside ``use_charge_embedding``. Default is True.
+    qm_program : str, optional
+        QM code to write inputs for: ``'terachem'`` (default) or ``'orca'``.
+        ORCA jobs write ``qmscript.inp`` and only support SLURM.
+    nprocs : int, optional
+        Number of MPI processes for ORCA jobs. Default is 16.
+    partition : str or None, optional
+        SLURM partition. Defaults to ``'xeon-g6-volta'`` for TeraChem and
+        ``'cpu'`` for ORCA.
+    account : str or None, optional
+        SLURM account to charge.
+    time_limit : str or None, optional
+        SLURM wall time limit (e.g., ``'2-00:00:00'``).
+    orca_module : str or None, optional
+        Environment module that provides ORCA. Default is ``'orca/6.1.1'``.
+    dispersion : str or None, optional
+        ORCA dispersion keyword. Default is ``'D3BJ'``.
+    aux_basis : str or None, optional
+        ORCA auxiliary basis for RIJCOSX. Default is ``'def2/J'``.
+    orca_keywords : str, list of str, or None, optional
+        Extra ORCA ``!`` keywords (e.g., ``'EnGrad'``). Default is None.
     """
+    qm_program = qm_program.lower()
+    if qm_program not in ("terachem", "orca"):
+        raise ValueError(f"Unknown qm_program '{qm_program}'. Choose 'terachem' or 'orca'.")
+    if qm_program == "orca" and scheduler != "slurm":
+        raise ValueError("ORCA job scripts are currently only available for the slurm scheduler.")
 
     orig_dir = os.getcwd()
     os.chdir(output_dir)
@@ -344,20 +389,28 @@ def create_jobs(pdb_list_path, output_dir, optimization, basis, method, guess, u
             structure_name = os.path.basename(structure)
             job_name = f"{pdb_name}{structure_name}"
             
-            if scheduler == "slurm":
+            if qm_program == "orca":
+                qmscript = job_scripts.write_orca(optimization, coord_file, basis, method, total_charge, multiplicity, guess, dielectric, use_charge_embedding, use_implicit_solvent, nprocs, memory, dispersion, aux_basis, orca_keywords)
+                jobscript = job_scripts.write_slurm_orca_job(job_name, nprocs, memory, partition or "cpu", account, time_limit, orca_module, structure_name)
+                qmscript_name = 'qmscript.inp'
+            elif scheduler == "slurm":
                 qmscript = job_scripts.write_qm(optimization, coord_file, basis, method, total_charge, multiplicity, guess, pcm_radii_file, constraint_freeze, dielectric, use_charge_embedding, use_implicit_solvent)
-                jobscript = job_scripts.write_slurm_job(job_name, gpus, memory)
-            if scheduler == "sge":
+                jobscript = job_scripts.write_slurm_job(job_name, gpus, memory, partition or "xeon-g6-volta", account, time_limit)
+                qmscript_name = 'qmscript.in'
+            elif scheduler == "sge":
                 qmscript = job_scripts.write_qm(optimization, coord_file, basis, method, total_charge, multiplicity, guess, pcm_radii_file, constraint_freeze, dielectric, use_charge_embedding, use_implicit_solvent)
                 jobscript = job_scripts.write_sge_job(job_name, gpus, memory)
+                qmscript_name = 'qmscript.in'
             
-            with open('qmscript.in', 'w') as f:
+            with open(qmscript_name, 'w') as f:
                 f.write(qmscript)
             with open('jobscript.sh', 'w') as f:
                 f.write(jobscript)
 
             if use_charge_embedding:
                 charge_embedding.get_charges(charge_embedding_cutoff, charge_embedding_charges)
+                if qm_program == "orca":
+                    write_orca_pointcharges()
 
             print(f"> Created QM job files for {pdb}/{structure_name}/{method}/")
             

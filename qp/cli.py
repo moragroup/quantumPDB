@@ -338,6 +338,15 @@ def submit(config):
     charge_embedding_charges = config_data.get('charge_embedding_charges', None)
     dielectric = config_data.get('dielectric', 10)
     use_implicit_solvent = config_data.get('use_implicit_solvent', not charge_embedding)
+    qm_program = config_data.get('qm_program', 'terachem')
+    nprocs = config_data.get('nprocs', 16)
+    partition = config_data.get('partition', None)
+    account = config_data.get('account', None)
+    time_limit = config_data.get('time_limit', None)
+    orca_module = config_data.get('orca_module', 'orca/6.1.1')
+    dispersion = config_data.get('dispersion', 'D3BJ')
+    aux_basis = config_data.get('aux_basis', 'def2/J')
+    orca_keywords = config_data.get('orca_keywords', None)
     create_jobs = config_data.get('create_jobs', False)
     submit_jobs = config_data.get('submit_jobs', False)
     input = config_data.get('input', [])
@@ -348,8 +357,8 @@ def submit(config):
     input = os.path.abspath(input)
 
     if create_jobs:
-        click.echo("> Creating job files for QM calculations")
-        create.create_jobs(input, output, optimization, basis, method, guess, charge_embedding, charge_embedding_cutoff, charge_embedding_charges, gpus, memory, scheduler, pcm_radii_file, dielectric, use_implicit_solvent)
+        click.echo(f"> Creating {qm_program} job files for QM calculations")
+        create.create_jobs(input, output, optimization, basis, method, guess, charge_embedding, charge_embedding_cutoff, charge_embedding_charges, gpus, memory, scheduler, pcm_radii_file, dielectric, use_implicit_solvent, qm_program, nprocs, partition, account, time_limit, orca_module, dispersion, aux_basis, orca_keywords)
     if submit_jobs:
         click.echo("\n> Submitting QM calculations")
         submit.manage_jobs(output, job_count, method, scheduler)

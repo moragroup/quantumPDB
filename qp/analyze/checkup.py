@@ -28,7 +28,7 @@ def format_plot() -> None:
 def check_failure_mode(filepath):
     """Classify a completed QM job based on its output file content.
 
-    Parses the TeraChem output file to identify the job outcome:
+    Parses the TeraChem or ORCA output file to identify the job outcome:
     successful completion, charge/spin error, memory error, or unknown failure.
 
     Parameters
@@ -45,6 +45,7 @@ def check_failure_mode(filepath):
     with open(filepath, 'r') as f:
         content = f.read()
 
+        # TeraChem markers
         if "Incorrect molecular charge or spin multiplicity" in content:
             return "charge"
         elif "In Alloc2D: malloc failed" in content:
@@ -53,6 +54,15 @@ def check_failure_mode(filepath):
             return "unknown"
         elif "Job finished" in content:
             return "done"
+        # ORCA markers
+        elif "ORCA TERMINATED NORMALLY" in content:
+            return "done"
+        elif "multiplicity" in content and "impossible" in content:
+            return "charge"
+        elif "Not enough memory" in content or "increase MaxCore" in content:
+            return "memory"
+        elif "ORCA finished by error termination" in content or "aborting the run" in content:
+            return "unknown"
         
     return "running"
 

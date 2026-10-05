@@ -191,9 +191,56 @@ These parameters control ``qp submit`` (QM job creation and submission).
    * - ``scheduler``
      - ``'slurm'``
      - Job scheduler: ``'slurm'`` or ``'sge'``.
-   * - ``pcm_radii_file``
+    * - ``pcm_radii_file``
      - ``'pcm_radii'``
      - Path to a custom PCM radii file (TeraChem-specific).
+   * - ``qm_program``
+     - ``'terachem'``
+     - QM code to write inputs for: ``'terachem'`` (``qmscript.in``, GPU) or
+       ``'orca'`` (``qmscript.inp``, CPU/MPI, Slurm only). For ORCA, a
+       leading ``u`` on ``method`` (e.g., ``ub3lyp``) becomes ``UKS``, the
+       basis is an ORCA name (e.g., ``def2-SVP``), implicit solvent uses
+       CPCM, and ``optimization: true`` relaxes only hydrogens.
+   * - ``partition``
+     - ``null``
+     - Slurm partition. When ``null``, uses ``xeon-g6-volta`` for TeraChem
+       and ``cpu`` for ORCA.
+   * - ``account``
+     - ``null``
+     - Slurm account to charge (``#SBATCH --account``).
+   * - ``time_limit``
+     - ``null``
+     - Slurm wall time limit (e.g., ``'2-00:00:00'``).
+
+**ORCA-specific settings** (used only when ``qm_program: orca``):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 60
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``nprocs``
+     - ``16``
+     - MPI processes per job (``%pal nprocs`` and Slurm ``--ntasks``).
+   * - ``dispersion``
+     - ``'D3BJ'``
+     - Dispersion correction keyword (e.g., ``D3BJ``, ``D3ZERO``, ``D4``).
+       Set to ``null`` to disable.
+   * - ``aux_basis``
+     - ``'def2/J'``
+     - Auxiliary basis for RIJCOSX. Set to ``null`` to disable RIJCOSX.
+   * - ``orca_keywords``
+     - ``null``
+     - Extra keywords appended to the ORCA ``!`` line, as a string or list
+       (e.g., ``EnGrad`` to also write nuclear gradients to
+       ``qmscript.engrad``, or ``TightSCF``).
+   * - ``orca_module``
+     - ``'orca/6.1.1'``
+     - Environment module loaded in the job script. Set to ``null`` if ORCA
+       is already on ``PATH``. ``memory`` is the total job memory; 75% of it
+       is split across processes for ``%maxcore``.
 
 **Job management:**
 

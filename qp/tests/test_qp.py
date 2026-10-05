@@ -13,7 +13,7 @@ import pytest
 
 import qp
 from qp.manager.charge_embedding import load_custom_charges, get_charges, parse_pdb_to_xyz
-from qp.manager.job_scripts import write_qm
+from qp.manager.job_scripts import write_qm, write_orca, write_slurm_orca_job, write_slurm_job
 
 
 def test_qp_imported():
@@ -236,3 +236,87 @@ def test_write_qm_backward_compatible_default():
     result = write_qm(**_BASE_QM_KWARGS, use_charge_embedding=False)
     assert "pcm cosmo" in result
     assert "pointcharges ptchrges.xyz" not in result
+
+
+_BASE_ORCA_KWARGS = dict(
+    optimization=False,
+    coord_file="A302.xyz",
+    basis="def2-SVP",
+    method="ub3lyp",
+    total_charge=3,
+    multiplicity=5,
+    guess="generate",
+    dielectric=10,
+    nprocs=32,
+    memory="128G",
+)
+
+
+def test_write_orca_implicit_solvent():
+    """Test ORCA input with CPCM implicit solvent and unrestricted functional."""
+    result = write_orca(**_BASE_ORCA_KWARGS, use_charge_embedding=False, use_implicit_solvent=True)
+    keywords = result.splitlines()[0]
+    assert keywords.startswith("! UKS B3LYP D3BJ def2-SVP def2/J RIJCOSX CPCM")
+    assert "Opt" not in keywords
+    assert "nprocs 32" in result
+    assert "%maxcore 3072" in result
+    assert "epsilon 10" in result
+    assert "%pointcharges" not in result
+    assert "* xyzfile 3 5 A302.xyz" in result
+
+
+def test_write_orca_charge_embedding_only():
+    """Test ORCA input with point charges and no implicit solvent."""
+    result = write_orca(**_BASE_ORCA_KWARGS, use_charge_embedding=True, use_implicit_solvent=False)
+    assert '%pointcharges "ptchrges.pc"' in result
+    assert "CPCM" not in result
+    assert "%cpcm" not in result
+
+
+def test_write_orca_optimization_hydrogens_only():
+    """Test ORCA optimization relaxes only hydrogens, mirroring TeraChem heavy-atom freeze."""
+    kwargs = dict(_BASE_ORCA_KWARGS, optimization=True)
+    result = write_orca(**kwargs, use_charge_embedding=False)
+    assert " Opt" in result.splitlines()[0]
+    assert "optimizehydrogens true" in result
+
+
+def test_write_orca_restricted_method_passthrough():
+    """Test that methods without a 'u' prefix are passed through unchanged."""
+    kwargs = dict(_BASE_ORCA_KWARGS, method="r2SCAN-3c", dispersion=None, aux_basis=None, basis="")
+    result = write_orca(**kwargs, use_charge_embedding=False, use_implicit_solvent=False)
+    assert result.splitlines()[0].split() == ["!", "r2SCAN-3c", "SlowConv"]
+
+
+def test_write_orca_extra_keywords():
+    """Test that extra ORCA keywords (string or list) are appended once."""
+    as_str = write_orca(**_BASE_ORCA_KWARGS, use_charge_embedding=False, extra_keywords="EnGrad TightSCF")
+    as_list = write_orca(**_BASE_ORCA_KWARGS, use_charge_embedding=False, extra_keywords=["EnGrad", "TightSCF", "CPCM"])
+    assert as_str.splitlines()[0].endswith("SlowConv EnGrad TightSCF")
+    assert as_list.splitlines()[0] == as_str.splitlines()[0]
+
+
+def test_write_slurm_orca_job():
+    """Test ORCA SLURM script requests MPI tasks and runs ORCA by full path."""
+    result = write_slurm_orca_job("6nieA302", 32, "128G", partition="cpu", account="mora", time_limit="1-00:00:00", structure_name="A302")
+    assert "#SBATCH --partition=cpu" in result
+    assert "#SBATCH --account=mora" in result
+    assert "#SBATCH --ntasks=32" in result
+    assert "#SBATCH --mem=128G" in result
+    assert "#SBATCH --time=1-00:00:00" in result
+    assert "module load orca/6.1.1" in result
+    assert '"$ORCA_EXE" qmscript.inp > "$JOBDIR/qmscript.out"' in result
+    assert "scr/A302.molden" in result
+    assert 'grep -q "ORCA TERMINATED NORMALLY"' in result
+    # ORCA runs in node-local scratch and results are copied back
+    assert 'WORK="${TMPDIR:-/tmp}/orca_${SLURM_JOB_ID:-$$}"' in result
+    assert 'cp "$f" "$JOBDIR"/' in result
+    assert "mpirun" not in result
+
+
+def test_write_slurm_job_defaults_unchanged():
+    """Test TeraChem SLURM script keeps its original partition when no overrides are given."""
+    result = write_slurm_job("6nieA302", 1, "8G")
+    assert "#SBATCH --partition=xeon-g6-volta" in result
+    assert "--account" not in result
+    assert "--time" not in result
