@@ -1,5 +1,6 @@
 """Parse Protoss output logs and detect residue type changes."""
 
+import os
 from Bio.PDB import PDBParser
 from qp.structure.missing import get_chain_order
 
@@ -22,8 +23,13 @@ def parse_log(log_path, pdb_path, AA):
         Set of residues with clashes in the format compatible with `residues`.
         Each tuple contains ((res_id, ' '), one_letter_code, 'R') and the chain index.
     """
-    chain_order = get_chain_order(pdb_path)
     residues_with_clashes = set()
+    if not os.path.isfile(log_path):
+        # Pre-prepared Protoss inputs ship without a log; treat as clash-free
+        print(f"> No Protoss log found at {log_path}; assuming no clashes")
+        return residues_with_clashes
+
+    chain_order = get_chain_order(pdb_path)
 
     with open(log_path, "r") as f:
         for line in f:

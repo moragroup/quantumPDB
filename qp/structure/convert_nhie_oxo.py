@@ -215,14 +215,22 @@ def place_oxo_manually(atoms, iron):
             potential_oxos.append((oxo_coord, ne2['serial']))
             print(f"> Potential oxo site opposite His {ne2['serial']}.")
 
-    # Find AKG coordinates for dihedral calculation
+    # Find AKG coordinates for dihedral calculation. Use the AKG bound to this
+    # iron (O5 closest to Fe), not simply the first AKG in the file, which
+    # belongs to a different chain in multimeric structures.
+    akg_o5_atoms = [atom for atom in atoms if atom['resName'] == 'AKG' and atom['name'] == 'O5']
+    if not akg_o5_atoms:
+        print("> Error: Could not find AKG atoms (C2 and O5) for dihedral calculation.")
+        return False
+    akg_o5 = min(akg_o5_atoms, key=lambda a: np.linalg.norm(np.array([a['x'], a['y'], a['z']]) - iron_coord))
     try:
-        akg_c2 = next(atom for atom in atoms if atom['resName'] == 'AKG' and atom['name'] == 'C2')
-        akg_o5 = next(atom for atom in atoms if atom['resName'] == 'AKG' and atom['name'] == 'O5')
+        akg_c2 = next(atom for atom in atoms
+                      if atom['resName'] == 'AKG' and atom['name'] == 'C2'
+                      and atom['chainID'] == akg_o5['chainID'] and atom['resSeq'] == akg_o5['resSeq'])
     except StopIteration:
         print("> Error: Could not find AKG atoms (C2 and O5) for dihedral calculation.")
         return False
-    
+
     c2_coord = np.array([akg_c2['x'], akg_c2['y'], akg_c2['z']])
     o5_coord = np.array([akg_o5['x'], akg_o5['y'], akg_o5['z']])
 

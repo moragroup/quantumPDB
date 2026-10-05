@@ -320,3 +320,36 @@ def test_write_slurm_job_defaults_unchanged():
     assert "#SBATCH --partition=xeon-g6-volta" in result
     assert "--account" not in result
     assert "--time" not in result
+
+
+def test_parse_log_missing_log_means_no_clashes(tmp_path):
+    """Pre-prepared Protoss inputs have no log; parse_log must not crash."""
+    from qp.protonate.parse_output import parse_log
+    assert parse_log(str(tmp_path / "missing_log.txt"), str(tmp_path / "x.pdb"), {}) == set()
+
+
+def test_place_oxo_uses_akg_of_same_iron():
+    """Each Fe in a multimer must use its own AKG for the oxo dihedral test.
+
+    In 6NIE chain D the own-AKG dihedral selects the open site trans to His137;
+    using chain A's AKG (the first in the file) wrongly selected the site trans
+    to His204, on top of the Fe-bound AKG carboxylate oxygen.
+    """
+    import numpy as np
+    from qp.structure.convert_nhie_oxo import read_pdb, place_oxo_manually
+    pdb = os.path.join(os.path.dirname(qp.__file__), "resources", "prepared", "6nie", "Protoss", "6nie_protoss.pdb")
+    atoms = read_pdb(pdb)
+    xyz = lambda a: np.array([a['x'], a['y'], a['z']])
+    irons = {a['chainID']: a for a in atoms if a['resName'] == 'FE2' and a['name'] == 'FE'}
+    assert set(irons) == {'A', 'B', 'C', 'D'}
+    expected = {'A': 137, 'B': 204, 'C': 137, 'D': 137}
+    for chain, iron in irons.items():
+        assert place_oxo_manually(atoms, iron)
+        oxo = atoms[-1]
+        assert oxo['resName'] == 'OXO' and oxo['chainID'] == chain
+        fe, ox = xyz(iron), xyz(oxo)
+        assert abs(np.linalg.norm(ox - fe) - 1.65) < 1e-6
+        ne2 = xyz(next(a for a in atoms if a['resName'] == 'HIS' and a['chainID'] == chain
+                       and a['resSeq'] == expected[chain] and a['name'] == 'NE2'))
+        cosang = np.dot(ox - fe, ne2 - fe) / (np.linalg.norm(ox - fe) * np.linalg.norm(ne2 - fe))
+        assert cosang < -0.99
