@@ -837,7 +837,7 @@ def cap_chains(model: Model, residues: Set[Residue], capping: int) -> Set[Residu
                 if capping == 1:
                     cap_residues.add(build_hydrogen(res, pre, "N"))
                 else:
-                    cap_residues.add(build_heavy(res, pre, "N"))
+                    cap_residues.add(build_heavy(chain, res, pre, "N"))
                 N_capped_flag = True
         if not N_capped_flag:
             if not check_atom_valence(res, cluster_tree, "N", 3):
@@ -859,7 +859,7 @@ def cap_chains(model: Model, residues: Set[Residue], capping: int) -> Set[Residu
                 if capping == 1:
                     cap_residues.add(build_hydrogen(res, nxt, C_name))
                 else:
-                    cap_residues.add(build_heavy(res, nxt, C_name))
+                    cap_residues.add(build_heavy(chain, res, nxt, C_name))
                 C_capped_flag = True
         if not C_capped_flag:
             if not check_atom_valence(res, cluster_tree, C_name, 3):
